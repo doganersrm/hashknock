@@ -31,37 +31,47 @@ python3 hashknock.py
   hashknock> <hashdeğeriyazılır>
 
 
-HASH KNOCK — Kali Linux Global Kurulum
-1) Repo'yu Downloads'a indirdin
+# HASH KNOCK — Kali Linux Global Kurulum
 
+## 1) Repo'yu Downloads'a indirdin
 ~/Downloads/hashknock
 
-2) Downloads dizinine geç
+bash
+Kodu kopyala
+
+## 2) Downloads dizinine geç
+```bash
 cd ~/Downloads
-
+```
 3) Klasörü /opt içine taşı
+```bash
 sudo mv hashknock /opt/hashknock
-
-## /opt özel araçların kalıcı dizinidir.
-## hashcat, msf, burp vb. de buraya kurulur.
+```
+/opt özel araçların kalıcı dizinidir.
+hashcat, msf, burp vb. de buraya kurulur.
 
 4) Ana Python dosyasını çalıştırılabilir yap
+```bash
 sudo chmod +x /opt/hashknock/hashknock.py
-
+```
 5) Global komut wrapper’ı oluştur
+```bash
 sudo nano /usr/local/bin/hashknock
-
+```
 6) Açılan dosyaya şu içeriği yapıştır:
-'''bash
+```bash
 #!/bin/bash
 # HASH KNOCK global komut wrapper'ı
 cd /opt/hashknock
 exec python3 hashknock.py "$@"
-'''
-Kaydet → CTRL + O, Enter
-Çık    → CTRL + X
+```
+
+Kaydet: CTRL + O, Enter
+Çık: CTRL + X
 
 7) Wrapper script’i çalıştırılabilir yap
+```bash
 sudo chmod +x /usr/local/bin/hashknock
+```
 
 
