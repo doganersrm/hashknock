@@ -15,21 +15,25 @@ Tamamen **offline çalışır**, JSON tabanlı imza sistemi sayesinde kolayca ge
 -  Çapraz platform: Linux, Windows, macOS
 
 ## Kurulum
-
+```bash
 git clone https://github.com/doganersrm/hashknock.git
 
 cd hashknock
 
 python3 hashknock.py
+```
 
 Tek Hash Analizi
+```bash
 python3 hashknock.py -h "5f4dcc3b5aa765d61d8327deb882cf99"
+```
 
 (Geliştirilecek) Etkileşim Mod
 Tekrarlı hash test etmek için.
+```bash
 python3 hashknock.py
   hashknock> <hashdeğeriyazılır>
-
+```
 
 ## HASH KNOCK — Kali Linux Global Kurulum
 
