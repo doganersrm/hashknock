@@ -77,4 +77,16 @@ Kaydet: CTRL + O, Enter
 sudo chmod +x /usr/local/bin/hashknock
 ```
 
+Kurulum sonrası 
+##v0.5 ile birlikte otomatik güncelleme eklendi.
+```bash
+hashknock --update 
+```
+
+Eğer değiştirilmiş bir yapı kullanıyor ve en güncel sürüme gitmek isterseniz.
+```bash
+cd /opt/hashknock
+sudo git reset --hard
+sudo git pull
+```
 
