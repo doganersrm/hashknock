@@ -8,6 +8,7 @@ Tamamen **offline çalışır**, JSON tabanlı imza sistemi sayesinde kolayca ge
 ██║  ██║██║  ██║███████║██║  ██╗     ██║  ██╗██║ ╚███║╚██████╔╝╚██████╗██║  ██╗
 ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚══╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝
 
+
 ## Özellikler
 
 -  **Hash türü tanıma** (MD5, SHA ailesi, bcrypt, phpass, NTLM, vb…)
