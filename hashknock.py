@@ -2,6 +2,9 @@
 import argparse
 import json
 import re
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -23,25 +26,19 @@ def print_banner():
 def is_hex(s: str) -> bool:
     return bool(re.fullmatch(r"[0-9a-fA-F]+", s))
 
+
 def print_table(rows, headers):
     """Basit hizalı tablo yazdırır."""
-    # Kolon genişliklerini hesapla
     col_widths = [
         max(len(str(row[i])) for row in rows + [headers])
         for i in range(len(headers))
     ]
-
-    # Format string
-    fmt = " | ".join("{:<" + str(w) + "}" for w in col_widths)
-
-    # Ayraç
+    fmt = " | ".join("{:<" + str(w) for w in col_widths)
     separator = "-+-".join("-" * w for w in col_widths)
 
-    # Başlık
     print(fmt.format(*headers))
     print(separator)
 
-    # Satırlar
     for row in rows:
         print(fmt.format(*row))
     print()
@@ -71,7 +68,6 @@ def load_hashcat_map(path: Path) -> Dict[str, List[int]]:
     }
     """
     if not path.is_file():
-        # Dosya yoksa sessizce boş map döndür.
         return {}
     with path.open("r", encoding="utf-8") as f:
         raw = json.load(f)
@@ -133,7 +129,6 @@ def analyze_and_print(hash_value: str,
                       signatures: List[Dict[str, Any]],
                       hashcat_map: Dict[str, List[int]]) -> None:
     """Tek bir hash için analizi yapıp ekrana basar."""
-    # Windows CMD tek/çift tırnak düzeltmesi
     raw = hash_value.strip()
     if (raw.startswith("'") and raw.endswith("'")) or (raw.startswith('"') and raw.endswith('"')):
         h = raw[1:-1]
@@ -170,9 +165,45 @@ def analyze_and_print(hash_value: str,
         headers=["Hash Türü", "Açıklama", "Olasılık", "Hashcat Mode"]
     )
 
-
     print("[*] Not: Birden fazla eşleşme olması normaldir; bazı formatlar aynı pattern'i paylaşır.")
     print("[*] Hashcat mod bilgisi sadece referans içindir; cracking işlemini ayrıca Hashcat ile yapman gerekir.\n")
+
+
+#GÜNCELLEME FONKSİYONU
+def update_hashknock():
+    """
+    /opt/hashknock altında git pull ile güncelleme yapar.
+    'hashknock --update' ile çağrılır.
+    """
+    print("[*] HASH KNOCK: Güncelleme başlatılıyor...\n")
+
+    repo_url = "https://github.com/doganersrm/hashknock.git"
+    install_dir = "/opt/hashknock"
+
+    if not os.path.exists(install_dir):
+        print(f"[-] {install_dir} dizini bulunamadı.")
+        print("[*] Bu komut, aracı /opt/hashknock altına git clone ile kurduğunu varsayar.")
+        print("[*] İlk kurulum için örnek:")
+        print(f"    sudo git clone {repo_url} {install_dir}\n")
+        sys.exit(1)
+
+    # git var mı kontrolü (opsiyonel ama faydalı)
+    try:
+        subprocess.run(["git", "--version"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        print("[-] 'git' komutu bulunamadı. Lütfen önce git kur:")
+        print("    sudo apt install git\n")
+        sys.exit(1)
+
+    try:
+        print(f"[*] {install_dir} dizininde 'git pull' çalıştırılıyor...\n")
+        subprocess.run(["sudo", "git", "-C", install_dir, "pull"], check=True)
+        print("\n[+] HASH KNOCK başarıyla güncellendi!")
+        print("[*] Değişikliklerin etkili olması için komutu yeniden çalıştırabilirsin.\n")
+        sys.exit(0)
+    except subprocess.CalledProcessError:
+        print("[-] 'git pull' sırasında bir hata oluştu. Lütfen dizinin bir git repo olduğundan emin ol.")
+        sys.exit(1)
 
 
 def main():
@@ -182,7 +213,7 @@ def main():
         add_help=False
     )
 
-    # Senin isteğin: -h ile hash girilsin
+    # -h ile hash giriliyor
     parser.add_argument(
         "-h", "--hash",
         dest="hash_value",
@@ -198,6 +229,12 @@ def main():
         default="hashcat_modes.json",
         help="Hashcat mode eşlemesi dosyası (varsayılan: hashcat_modes.json)"
     )
+    # yeni parametre: --update
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="HASH KNOCK aracını /opt/hashknock altında git pull ile günceller."
+    )
     parser.add_argument(
         "-H", "--help",
         action="help",
@@ -211,6 +248,10 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Önce update isteği varsa onu çalıştır
+    if args.update:
+        update_hashknock()
 
     print_banner()
 
