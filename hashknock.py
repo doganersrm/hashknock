@@ -33,7 +33,7 @@ def print_table(rows, headers):
         max(len(str(row[i])) for row in rows + [headers])
         for i in range(len(headers))
     ]
-    fmt = " | ".join("{:<" + str(w) for w in col_widths)
+    fmt = " | ".join(f"{{:<{w}}}" for w in col_widths)
     separator = "-+-".join("-" * w for w in col_widths)
 
     print(fmt.format(*headers))
@@ -293,4 +293,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
