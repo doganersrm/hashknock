@@ -18,7 +18,7 @@ def print_banner():
 ██║  ██║██║  ██║███████║██║  ██╗     ██║  ██╗██║ ╚███║╚██████╔╝╚██████╗██║  ██╗
 ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚══╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝
 
-                     HASH KNOCK  —  Hash Type Identifier v0.5
+                     HASH KNOCK  —  Hash Type Identifier v0.6
     """
     print(banner)
 
@@ -293,6 +293,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
