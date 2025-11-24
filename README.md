@@ -17,6 +17,7 @@ Tamamen **offline çalışır**, JSON tabanlı imza sistemi sayesinde kolayca ge
 ## Kurulum
 
 git clone https://github.com/doganersrm/hashknock.git
+
 cd hashknock
 
 python3 hashknock.py
