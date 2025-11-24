@@ -15,13 +15,36 @@ def print_banner():
 ██║  ██║██║  ██║███████║██║  ██╗     ██║  ██╗██║ ╚███║╚██████╔╝╚██████╗██║  ██╗
 ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚══╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝
 
-                     HASH KNOCK  —  Hash Type Identifier v0.1
+                     HASH KNOCK  —  Hash Type Identifier v0.2
     """
     print(banner)
 
 
 def is_hex(s: str) -> bool:
     return bool(re.fullmatch(r"[0-9a-fA-F]+", s))
+
+def print_table(rows, headers):
+    """Basit hizalı tablo yazdırır."""
+    # Kolon genişliklerini hesapla
+    col_widths = [
+        max(len(str(row[i])) for row in rows + [headers])
+        for i in range(len(headers))
+    ]
+
+    # Format string
+    fmt = " | ".join("{:<" + str(w) + "}" for w in col_widths)
+
+    # Ayraç
+    separator = "-+-".join("-" * w for w in col_widths)
+
+    # Başlık
+    print(fmt.format(*headers))
+    print(separator)
+
+    # Satırlar
+    for row in rows:
+        print(fmt.format(*row))
+    print()
 
 
 def load_signatures(path: Path) -> List[Dict[str, Any]]:
@@ -128,23 +151,25 @@ def analyze_and_print(hash_value: str,
 
     probs = compute_probabilities(matches)
 
-    print("[+] Eşleşen muhtemel hash türleri:\n")
+    print("\n[+] Eşleşen muhtemel hash türleri:\n")
+
+    rows = []
     for sig in matches:
         name = sig.get("name", "Bilinmeyen")
         desc = sig.get("description", "")
-        p = probs.get(name, 0.0)
+        p = f"%{probs.get(name, 0.0)}"
 
-        # Hashcat mode lookup
         hashcat_key = sig.get("hashcat_key") or name
         modes = hashcat_map.get(hashcat_key)
+        mode_str = ", ".join(str(m) for m in modes) if modes else "-"
 
-        print(f"  • {name}  (olasılık: %{p})")
-        if desc:
-            print(f"    - {desc}")
-        if modes:
-            mode_str = ", ".join(str(m) for m in modes)
-            print(f"    - Hashcat mode: {mode_str}")
-        print()
+        rows.append([name, desc, p, mode_str])
+
+    print_table(
+        rows,
+        headers=["Hash Türü", "Açıklama", "Olasılık", "Hashcat Mode"]
+    )
+
 
     print("[*] Not: Birden fazla eşleşme olması normaldir; bazı formatlar aynı pattern'i paylaşır.")
     print("[*] Hashcat mod bilgisi sadece referans içindir; cracking işlemini ayrıca Hashcat ile yapman gerekir.\n")
