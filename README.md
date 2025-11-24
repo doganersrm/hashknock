@@ -31,15 +31,14 @@ python3 hashknock.py
   hashknock> <hashdeğeriyazılır>
 
 
-# HASH KNOCK — Kali Linux Global Kurulum
+## HASH KNOCK — Kali Linux Global Kurulum
 
-## 1) Repo'yu Downloads'a indirdin
+1) Repo'yu Downloads'a indirdin
+ ```bash
 ~/Downloads/hashknock
+````
 
-bash
-Kodu kopyala
-
-## 2) Downloads dizinine geç
+2) Downloads dizinine geç
 ```bash
 cd ~/Downloads
 ```
