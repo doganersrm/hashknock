@@ -52,11 +52,12 @@ sudo chmod +x /opt/hashknock/hashknock.py
 sudo nano /usr/local/bin/hashknock
 
 6) Açılan dosyaya şu içeriği yapıştır:
+'''bash
 #!/bin/bash
 # HASH KNOCK global komut wrapper'ı
 cd /opt/hashknock
 exec python3 hashknock.py "$@"
-
+'''
 Kaydet → CTRL + O, Enter
 Çık    → CTRL + X
 
