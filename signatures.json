@@ -1,0 +1,217 @@
+[
+  {
+    "name": "MD2",
+    "regex": "^[0-9a-fA-F]{32}$",
+    "description": "MD2 (128-bit). Diğer 32-hex hash'lerle karışabilir."
+  },
+  {
+    "name": "MD4",
+    "regex": "^[0-9a-fA-F]{32}$",
+    "description": "MD4 (128-bit). NTLM ile aynı uzunlukta."
+  },
+  {
+    "name": "MD5",
+    "regex": "^[0-9a-fA-F]{32}$",
+    "description": "MD5 (128-bit) – genel amaçlı, çok yaygın ama parola için zayıf."
+  },
+  {
+    "name": "Half MD5 (16 hex)",
+    "regex": "^[0-9a-fA-F]{16}$",
+    "description": "Bazı sistemlerde yarım MD5 veya custom checksum."
+  },
+  {
+    "name": "CRC32",
+    "regex": "^[0-9A-Fa-f]{8}$",
+    "description": "CRC32 checksum (hash değil, bütünlük için kullanılır)."
+  },
+  {
+    "name": "NTLM",
+    "regex": "^[0-9A-Fa-f]{32}$",
+    "description": "NTLM (Windows parola hash'i, genelde MD4 tabanlı)."
+  },
+  {
+    "name": "LANMAN (LM)",
+    "regex": "^[0-9A-F]{32}$",
+    "description": "LANMAN (LM) – eski Windows parola hash'i (tamamen büyük harf HEX)."
+  },
+  {
+    "name": "SHA-1",
+    "regex": "^[0-9a-fA-F]{40}$",
+    "description": "SHA-1 (160-bit). Artık çarpışmalar bulunduğu için önerilmiyor."
+  },
+  {
+    "name": "RIPEMD-160",
+    "regex": "^[0-9a-fA-F]{40}$",
+    "description": "RIPEMD-160 (160-bit). SHA-1 ile aynı uzunlukta."
+  },
+  {
+    "name": "SHA-224",
+    "regex": "^[0-9a-fA-F]{56}$",
+    "description": "SHA-224 (224-bit)."
+  },
+  {
+    "name": "SHA-256",
+    "regex": "^[0-9a-fA-F]{64}$",
+    "description": "SHA-256 (256-bit)."
+  },
+  {
+    "name": "SHA3-256",
+    "regex": "^[0-9a-fA-F]{64}$",
+    "description": "SHA3-256 (256-bit, Keccak tabanlı). SHA-256 ile uzunluk olarak aynı."
+  },
+  {
+    "name": "SHA-384",
+    "regex": "^[0-9a-fA-F]{96}$",
+    "description": "SHA-384 (384-bit)."
+  },
+  {
+    "name": "SHA-512",
+    "regex": "^[0-9a-fA-F]{128}$",
+    "description": "SHA-512 (512-bit)."
+  },
+  {
+    "name": "SHA3-512",
+    "regex": "^[0-9a-fA-F]{128}$",
+    "description": "SHA3-512 (512-bit, Keccak tabanlı). SHA-512 ile aynı uzunlukta."
+  },
+  {
+    "name": "MySQL pre-4.1 (OLD_PASSWORD)",
+    "regex": "^[0-9a-fA-F]{16}$",
+    "description": "Eski MySQL parola hash'i (OLD_PASSWORD())."
+  },
+  {
+    "name": "MySQL 4.1+ (double SHA1)",
+    "regex": "^\\*[0-9A-F]{40}$",
+    "description": "MySQL 4.1+ parola hash'i: * + 40 hex (double SHA1)."
+  },
+  {
+    "name": "PostgreSQL MD5",
+    "regex": "^md5[0-9a-fA-F]{32}$",
+    "description": "PostgreSQL MD5 parola hash formatı (md5 + 32 hex)."
+  },
+  {
+    "name": "MSSQL 2000 (SHA1)",
+    "regex": "^0x0100[0-9A-Fa-f]{0,8}[0-9A-Fa-f]{40}$",
+    "description": "Microsoft SQL Server 2000 parola hash formatı."
+  },
+  {
+    "name": "MSSQL 2005+ (SHA1)",
+    "regex": "^0x0200[0-9A-Fa-f]{0,8}[0-9A-Fa-f]{40}$",
+    "description": "Microsoft SQL Server 2005 ve sonrası parola hash formatı."
+  },
+  {
+    "name": "Oracle 7–10g (DES)",
+    "regex": "^[0-9A-F]{16}$",
+    "description": "Oracle eski DES tabanlı parola hash'i (uzunluk çakışabilir)."
+  },
+  {
+    "name": "Oracle 11g (SHA-1)",
+    "regex": "^S:[0-9A-F]{60}$",
+    "description": "Oracle 11g SHA-1 tabanlı parola hash formatı."
+  },
+  {
+    "name": "phpBB3 (phpass HMAC-MD5)",
+    "regex": "^\\$H\\$[./0-9A-Za-z]{31}$",
+    "description": "phpBB3 (phpass tabanlı parola hash formatı)."
+  },
+  {
+    "name": "WordPress (phpass)",
+    "regex": "^\\$P\\$[./0-9A-Za-z]{31}$",
+    "description": "WordPress phpPasswordHash (phpass) parola hash formatı."
+  },
+  {
+    "name": "Drupal 7+ (SHA-512-based)",
+    "regex": "^\\$S\\$[./0-9A-Za-z]{52}$",
+    "description": "Drupal 7+ SHA-512 tabanlı parola hash formatı."
+  },
+  {
+    "name": "Joomla 1.0 (MD5:salt)",
+    "regex": "^[0-9a-fA-F]{32}:[0-9a-zA-Z]{16}$",
+    "description": "Joomla 1.0 MD5 + salt formatı."
+  },
+  {
+    "name": "Joomla 1.5+ (MD5:salt)",
+    "regex": "^[0-9a-fA-F]{32}:[0-9a-zA-Z]{32}$",
+    "description": "Joomla 1.5+ MD5 + salt formatı."
+  },
+  {
+    "name": "Django SHA1",
+    "regex": "^sha1\\$[^$]+\\$[0-9a-fA-F]{40}$",
+    "description": "Eski Django SHA1 parola hash formatı (algorithm$salt$hash)."
+  },
+  {
+    "name": "Django PBKDF2-SHA256",
+    "regex": "^pbkdf2_sha256\\$[0-9]+\\$[^$]+\\$[A-Za-z0-9+/=]+$",
+    "description": "Django PBKDF2-SHA256 parola hash formatı."
+  },
+  {
+    "name": "Django PBKDF2-SHA1",
+    "regex": "^pbkdf2_sha1\\$[0-9]+\\$[^$]+\\$[A-Za-z0-9+/=]+$",
+    "description": "Django PBKDF2-SHA1 parola hash formatı."
+  },
+  {
+    "name": "bcrypt",
+    "regex": "^\\$2[aby]\\$[0-9]{2}\\$[./A-Za-z0-9]{53}$",
+    "description": "bcrypt (Unix/Linux parola hash'i)."
+  },
+  {
+    "name": "Argon2",
+    "regex": "^\\$argon2(id|i|d)\\$v=\\d+\\$m=\\d+,t=\\d+,p=\\d+\\$[A-Za-z0-9+/=]+\\$[A-Za-z0-9+/=]+$",
+    "description": "Argon2 (modern parola hash'i – Argon2id, Argon2i, Argon2d)."
+  },
+  {
+    "name": "LDAP {SHA}",
+    "regex": "^\\{SHA\\}[A-Za-z0-9+/=]{28}$",
+    "description": "LDAP {SHA} – SHA1 + Base64."
+  },
+  {
+    "name": "LDAP {SSHA}",
+    "regex": "^\\{SSHA\\}[A-Za-z0-9+/=]{32,}$",
+    "description": "LDAP {SSHA} – Salted SHA1 + Base64."
+  },
+  {
+    "name": "LDAP {MD5}",
+    "regex": "^\\{MD5\\}[A-Za-z0-9+/=]{22}$",
+    "description": "LDAP {MD5} – MD5 + Base64."
+  },
+  {
+    "name": "LDAP {SMD5}",
+    "regex": "^\\{SMD5\\}[A-Za-z0-9+/=]{22,}$",
+    "description": "LDAP {SMD5} – Salted MD5 + Base64."
+  },
+  {
+    "name": "SHA-256-crypt (Unix)",
+    "regex": "^\\$5\\$[./0-9A-Za-z]{1,16}\\$[./0-9A-Za-z]{43,86}$",
+    "description": "SHA-256-crypt (Unix/Linux parola hash formatı)."
+  },
+  {
+    "name": "SHA-512-crypt (Unix)",
+    "regex": "^\\$6\\$[./0-9A-Za-z]{1,16}\\$[./0-9A-Za-z]{43,86}$",
+    "description": "SHA-512-crypt (Unix/Linux parola hash formatı)."
+  },
+  {
+    "name": "MD5-crypt (Unix / Apache apr1)",
+    "regex": "^\\$(1|apr1)\\$[./0-9A-Za-z]{1,8}\\$[./0-9A-Za-z]{22}$",
+    "description": "MD5-crypt veya Apache apr1 MD5 parola hash formatı."
+  },
+  {
+    "name": "Cisco Type 5 (MD5-crypt)",
+    "regex": "^\\$1\\$[./0-9A-Za-z]{1,8}\\$[./0-9A-Za-z]{22}$",
+    "description": "Cisco Type 5 parola hash'i (MD5-crypt tabanlı)."
+  },
+  {
+    "name": "vBulletin < v3.8.5 (MD5)",
+    "regex": "^[0-9a-fA-F]{32}$",
+    "description": "vBulletin eski sürümler – çoğunlukla salt + MD5 (tek başına string salt içermeyebilir)."
+  },
+  {
+    "name": "vBulletin >= v3.8.5 (MD5)",
+    "regex": "^[0-9a-fA-F]{32}$",
+    "description": "vBulletin yeni sürümler – salt + MD5, hash formatı tek string içinde olmayabilir."
+  },
+  {
+    "name": "Generic Base64-encoded",
+    "regex": "^(?=.*[+/=])[A-Za-z0-9+/=]{16,}$",
+    "description": "Genel Base64 – hash, anahtar veya başka bir veri olabilir (en az bir +, / veya = içerir)."
+  }
+]
