@@ -1,7 +1,8 @@
 HASH KNOCK; siber güvenlik uzmanları, penetration tester’lar ve CTF için geliştirilmiş gelişmiş bir **hash tanımlama aracıdır**.  
 Tamamen **offline çalışır**, JSON tabanlı imza sistemi sayesinde kolayca genişletilebilir ve Hashcat mode numaralarıyla birlikte olasılık yüzdeleri verir.
 
-<img width="981" height="217" alt="image" src="https://github.com/user-attachments/assets/d3c6b8d2-bc78-4e92-b39e-2ad8cf555c59" />
+<img width="981" height="217" alt="image" src="https://github.com/user-attachments/assets/982996fa-f006-43eb-b072-30129e9f4972" />
+
 
 ## Özellikler
 
