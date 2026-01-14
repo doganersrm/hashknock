@@ -51,6 +51,9 @@ def is_hex(s: str) -> bool:
 
 def print_table(rows, headers):
     """Basit hizalı tablo yazdırır."""
+    if not rows:
+        return
+    
     col_widths = [
         max(len(str(row[i])) for row in rows + [headers])
         for i in range(len(headers))
@@ -76,7 +79,11 @@ def load_signatures(path: Path) -> List[Dict[str, Any]]:
         pattern = sig.get("regex")
         if not pattern:
             raise ValueError(f"İmzada 'regex' alanı eksik: {sig}")
-        sig["_compiled"] = re.compile(pattern)
+        try:
+            sig["_compiled"] = re.compile(pattern)
+        except re.error as e:
+            print(colored(f"[!] Regex hatası '{pattern}': {e}", Colors.WARNING))
+            continue
     return data
 
 
@@ -114,34 +121,52 @@ def detect_salt(hash_value: str) -> Tuple[str, Optional[str]]:
     # Format 1: hash:salt (basit)
     if ":" in hash_value and not hash_value.startswith("$"):
         parts = hash_value.split(":", 1)
-        return parts[0], parts[1]
+        if len(parts) == 2:
+            return parts[0], parts[1]
     
     # Format 2: $algo$salt$hash (örn: bcrypt, sha512crypt)
     if hash_value.startswith("$"):
         parts = hash_value.split("$")
         if len(parts) >= 4:
             # Genelde $algo$rounds/salt$hash formatı
-            return hash_value, parts[2] if len(parts[2]) > 0 else None
+            # Salt genellikle 3. alandadır
+            salt_candidate = parts[2] if len(parts) > 2 else None
+            if salt_candidate and len(salt_candidate) > 0:
+                return hash_value, salt_candidate
     
     return hash_value, None
 
 
-def identify_hash(hash_value: str, signatures: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def identify_hash(hash_value: str, signatures: List[Dict[str, Any]], verbose: bool = False) -> List[Dict[str, Any]]:
     h = hash_value.strip()
     matches: List[Dict[str, Any]] = []
 
     for sig in signatures:
-        if sig["_compiled"].fullmatch(h):
-            matches.append(sig)
+        if "_compiled" not in sig:
+            continue
+        try:
+            if sig["_compiled"].fullmatch(h):
+                matches.append(sig)
+                if verbose:
+                    print(colored(f"  ✓ Eşleşti: {sig.get('name', 'Unknown')}", Colors.OKGREEN))
+        except Exception as e:
+            if verbose:
+                print(colored(f"  ✗ Regex hatası: {e}", Colors.FAIL))
+            continue
 
-    # Hex ise ve birden çok eşleşme varsa Generic Base64 gibi çok genel olanları ele
+    # Hex ise ve birden çok eşleşme varsa Generic Base64 gibi çok genel olanları filtrele
     if is_hex(h) and len(matches) > 1:
         filtered = [
             m for m in matches
-            if "Generic Base64" not in m.get("name", "")
+            if "Generic Base64" not in m.get("name", "") and "base64" not in m.get("name", "").lower()
         ]
         if filtered:
+            if verbose:
+                print(colored(f"  [*] Generic/Base64 türleri filtrelendi, kalan: {len(filtered)}", Colors.OKCYAN))
             matches = filtered
+
+    # Uzunluk bazlı önceliklendirme (daha spesifik olanlar önce)
+    matches.sort(key=lambda m: len(m.get("name", "")), reverse=True)
 
     return matches
 
@@ -150,15 +175,30 @@ def compute_probabilities(matches: List[Dict[str, Any]]) -> Dict[str, float]:
     """
     Basit ağırlıklandırma:
       - Generic Base64 gibi genel imzalar: 1
-      - Diğerleri: 3
+      - Veritabanı spesifik (MySQL, PostgreSQL, MSSQL, Oracle): 5
+      - Framework spesifik (Django, WordPress, Joomla): 4
+      - Standart hash'ler (MD5, SHA, NTLM): 3
     """
     weights = []
     for m in matches:
-        name = m.get("name", "")
-        if "Generic Base64" in name:
+        name = m.get("name", "").lower()
+        
+        # Generic/Base64
+        if "generic" in name or "base64" in name:
             w = 1
+        # Veritabanı spesifik
+        elif any(db in name for db in ["mysql", "postgresql", "mssql", "oracle", "mongo"]):
+            w = 5
+        # Framework spesifik
+        elif any(fw in name for fw in ["django", "wordpress", "joomla", "drupal", "phpbb", "vbulletin"]):
+            w = 4
+        # Cisco, LDAP gibi özel formatlar
+        elif any(spec in name for spec in ["cisco", "ldap", "wpa", "argon"]):
+            w = 4
+        # Standart hash'ler
         else:
             w = 3
+        
         weights.append(w)
 
     total = sum(weights) or 1
@@ -173,35 +213,40 @@ def compute_probabilities(matches: List[Dict[str, Any]]) -> Dict[str, float]:
 def generate_hashcat_command(hash_value: str, 
                             matches: List[Dict[str, Any]], 
                             hashcat_map: Dict[str, List[int]],
-                            verbose: bool = False) -> Optional[str]:
+                            verbose: bool = False) -> List[str]:
     """
-    En olası hash türüne göre hashcat komutu oluşturur.
+    En olası hash türlerine göre hashcat komutları oluşturur.
+    Birden fazla komut dönebilir.
     """
     if not matches:
-        return None
+        return []
     
-    # En yüksek olasılıklı hash türünü al
+    # Olasılıklara göre sırala
     probs = compute_probabilities(matches)
-    best_match = max(matches, key=lambda m: probs.get(m.get("name", ""), 0))
+    sorted_matches = sorted(matches, key=lambda m: probs.get(m.get("name", ""), 0), reverse=True)
     
-    name = best_match.get("name", "")
-    hashcat_key = best_match.get("hashcat_key") or name
-    modes = hashcat_map.get(hashcat_key)
+    commands = []
+    seen_modes = set()
     
-    if not modes:
-        if verbose:
-            print(colored(f"[!] '{name}' için hashcat mode bulunamadı.", Colors.WARNING))
-        return None
+    # En yüksek 3 olasılığı al
+    for match in sorted_matches[:3]:
+        name = match.get("name", "")
+        hashcat_key = match.get("hashcat_key") or name
+        modes = hashcat_map.get(hashcat_key, [])
+        
+        if not modes:
+            if verbose:
+                print(colored(f"[!] '{name}' için hashcat mode bulunamadı.", Colors.WARNING))
+            continue
+        
+        for mode in modes:
+            if mode not in seen_modes:
+                seen_modes.add(mode)
+                prob = probs.get(name, 0)
+                cmd = f"hashcat -m {mode} -a 0 hash.txt wordlist.txt  # {name} (%{prob})"
+                commands.append(cmd)
     
-    mode = modes[0]  # İlk mode'u kullan
-    
-    # Temel komut
-    cmd = f"hashcat -m {mode} -a 0 hash.txt wordlist.txt"
-    
-    if verbose:
-        print(colored(f"[*] Hashcat komutu oluşturuldu (mode: {mode}, tip: {name})", Colors.OKCYAN))
-    
-    return cmd
+    return commands
 
 
 def analyze_hash(hash_value: str,
@@ -223,14 +268,15 @@ def analyze_hash(hash_value: str,
     if verbose and salt_part:
         print(colored(f"[*] Salt tespit edildi: {salt_part}", Colors.OKCYAN))
 
-    matches = identify_hash(h, signatures)
+    matches = identify_hash(h, signatures, verbose)
     
     result = {
         "original_hash": h,
         "hash_part": hash_part,
         "salt": salt_part,
+        "hash_length": len(h),
         "matches": [],
-        "hashcat_command": None
+        "hashcat_commands": []
     }
 
     if not matches:
@@ -246,7 +292,7 @@ def analyze_hash(hash_value: str,
         prob = probs.get(name, 0.0)
 
         hashcat_key = sig.get("hashcat_key") or name
-        modes = hashcat_map.get(hashcat_key)
+        modes = hashcat_map.get(hashcat_key, [])
         mode_str = ", ".join(str(m) for m in modes) if modes else "-"
 
         result["matches"].append({
@@ -256,10 +302,10 @@ def analyze_hash(hash_value: str,
             "hashcat_modes": mode_str
         })
 
-    # Hashcat komutu oluştur
-    hashcat_cmd = generate_hashcat_command(h, matches, hashcat_map, verbose)
-    if hashcat_cmd:
-        result["hashcat_command"] = hashcat_cmd
+    # Hashcat komutları oluştur
+    hashcat_cmds = generate_hashcat_command(h, matches, hashcat_map, verbose)
+    if hashcat_cmds:
+        result["hashcat_commands"] = hashcat_cmds
 
     return result
 
@@ -272,11 +318,13 @@ def analyze_and_print(hash_value: str,
     
     result = analyze_hash(hash_value, signatures, hashcat_map, verbose)
     
-    print(colored(f"[+] Girdiğin hash:", Colors.OKGREEN))
-    print(f"    {result['original_hash']}\n")
+    print(colored(f"[+] Hash:", Colors.OKGREEN))
+    print(f"    {result['original_hash']}")
+    print(colored(f"[+] Uzunluk:", Colors.OKBLUE))
+    print(f"    {result['hash_length']} karakter\n")
     
     if result.get("salt"):
-        print(colored(f"[+] Salt tespit edildi:", Colors.OKBLUE))
+        print(colored(f"[+] Salt tespit edildi:", Colors.WARNING))
         print(f"    {result['salt']}\n")
 
     if result["status"] == "no_match":
@@ -284,14 +332,22 @@ def analyze_and_print(hash_value: str,
         print(colored("[*] Yeni bir hash tipi gördüysen, signatures.json'a yeni regex imzası ekleyebilirsin.\n", Colors.WARNING))
         return result
 
-    print(colored("\n[+] Eşleşen muhtemel hash türleri:\n", Colors.OKGREEN))
+    print(colored(f"[+] {len(result['matches'])} olası hash türü bulundu:\n", Colors.OKGREEN))
 
     rows = []
     for match in result["matches"]:
-        prob_colored = colored(f"%{match['probability']}", Colors.OKGREEN if match['probability'] > 50 else Colors.WARNING)
+        prob = match['probability']
+        # Olasılığa göre renklendirme
+        if prob >= 20:
+            prob_colored = colored(f"%{prob}", Colors.OKGREEN)
+        elif prob >= 10:
+            prob_colored = colored(f"%{prob}", Colors.WARNING)
+        else:
+            prob_colored = f"%{prob}"
+        
         rows.append([
             match["name"],
-            match["description"],
+            match["description"][:60] + "..." if len(match["description"]) > 60 else match["description"],
             prob_colored,
             match["hashcat_modes"]
         ])
@@ -301,12 +357,14 @@ def analyze_and_print(hash_value: str,
         headers=["Hash Türü", "Açıklama", "Olasılık", "Hashcat Mode"]
     )
 
-    if result.get("hashcat_command"):
-        print(colored("[+] Önerilen Hashcat Komutu:", Colors.OKGREEN))
-        print(colored(f"    {result['hashcat_command']}\n", Colors.OKCYAN))
+    if result.get("hashcat_commands"):
+        print(colored("[+] Önerilen Hashcat Komutları:\n", Colors.OKGREEN))
+        for idx, cmd in enumerate(result["hashcat_commands"], 1):
+            print(colored(f"  {idx}. {cmd}", Colors.OKCYAN))
+        print()
 
-    print(colored("[*] Not: Birden fazla eşleşme olması normaldir; bazı formatlar aynı pattern'i paylaşır.", Colors.WARNING))
-    print(colored("[*] Hashcat komutunu kullanmadan önce hash.txt dosyasına hash'ini kaydet.\n", Colors.WARNING))
+    print(colored("[*] Not: Birden fazla eşleşme normaldir; bazı formatlar aynı uzunluğu paylaşır.", Colors.WARNING))
+    print(colored("[*] Hash'i 'hash.txt' dosyasına kaydet ve yukarıdaki komutları dene.\n", Colors.WARNING))
     
     return result
 
@@ -325,19 +383,31 @@ def analyze_file(file_path: Path,
     results = []
     
     with file_path.open("r", encoding="utf-8") as f:
-        lines = [line.strip() for line in f if line.strip()]
+        lines = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     
     total = len(lines)
     print(colored(f"[+] Dosyadan {total} hash okundu. Analiz başlıyor...\n", Colors.OKGREEN))
     
     for idx, line in enumerate(lines, 1):
         if verbose:
+            print(colored(f"\n{'='*70}", Colors.BOLD))
             print(colored(f"[*] İşleniyor ({idx}/{total}): {line[:50]}...", Colors.OKCYAN))
         
         result = analyze_hash(line, signatures, hashcat_map, verbose)
         results.append(result)
+        
+        if not verbose:
+            # Kısa progress gösterimi
+            if result["status"] == "success":
+                print(colored(f"  [{idx}/{total}] ✓ {line[:40]}... → {result['matches'][0]['name']}", Colors.OKGREEN))
+            else:
+                print(colored(f"  [{idx}/{total}] ✗ {line[:40]}... → No match", Colors.FAIL))
     
     print(colored(f"\n[+] Toplam {total} hash analiz edildi.\n", Colors.OKGREEN))
+    
+    # Özet istatistik
+    success_count = sum(1 for r in results if r["status"] == "success")
+    print(colored(f"[+] Başarılı: {success_count}, Eşleşmedi: {total - success_count}", Colors.OKCYAN))
     
     return results
 
@@ -347,7 +417,7 @@ def output_json(results: List[Dict[str, Any]], output_file: Optional[str] = None
     # _compiled regex objelerini kaldır
     clean_results = []
     for r in results:
-        clean_r = r.copy()
+        clean_r = {k: v for k, v in r.items() if not k.startswith("_")}
         if "matches" in clean_r:
             clean_r["matches"] = [
                 {k: v for k, v in m.items() if not k.startswith("_")}
@@ -372,6 +442,7 @@ def output_csv(results: List[Dict[str, Any]], output_file: Optional[str] = None)
     for r in results:
         base = {
             "hash": r["original_hash"],
+            "length": r.get("hash_length", 0),
             "salt": r.get("salt", ""),
             "status": r["status"]
         }
@@ -398,7 +469,7 @@ def output_csv(results: List[Dict[str, Any]], output_file: Optional[str] = None)
     if not rows:
         return
     
-    fieldnames = ["hash", "salt", "status", "hash_type", "description", "probability", "hashcat_modes"]
+    fieldnames = ["hash", "length", "salt", "status", "hash_type", "description", "probability", "hashcat_modes"]
     
     if output_file:
         with open(output_file, "w", encoding="utf-8", newline='') as f:
@@ -539,11 +610,15 @@ def main():
             print(colored(f"[*] {len(signatures)} imza yüklendi.", Colors.OKCYAN))
     except Exception as e:
         print(colored(f"[-] İmza dosyası yüklenemedi: {e}", Colors.FAIL))
+        print(colored(f"[*] Dosya yolu: {sig_path.absolute()}", Colors.WARNING))
         return
 
     hashcat_map = load_hashcat_map(modes_path)
     if args.verbose and hashcat_map:
-        print(colored(f"[*] {len(hashcat_map)} hashcat mode eşlemesi yüklendi.", Colors.OKCYAN))
+        print(colored(f"[*] {len(hashcat_map)} hashcat mode eşlemesi yüklendi.\n", Colors.OKCYAN))
+    elif not hashcat_map:
+        print(colored(f"[!] Hashcat mode dosyası yüklenemedi: {modes_path}", Colors.WARNING))
+        print(colored("[*] Mode numaraları gösterilmeyecek.\n", Colors.WARNING))
 
     # Dosyadan toplu analiz
     if args.hash_file:
@@ -554,12 +629,19 @@ def main():
         elif args.output == "csv":
             output_csv(results, args.output_file)
         else:
-            # Normal çıktı (her hash için detaylı)
-            for idx, result in enumerate(results, 1):
-                print(colored(f"\n{'='*60}", Colors.BOLD))
-                print(colored(f"Hash #{idx}", Colors.BOLD))
-                print(colored(f"{'='*60}\n", Colors.BOLD))
-                analyze_and_print(result["original_hash"], signatures, hashcat_map, args.verbose)
+            # Normal çıktıda özet istatistik
+            if not args.verbose:
+                print(colored("\n[+] En çok bulunan hash türleri:", Colors.OKGREEN))
+                type_counts = {}
+                for r in results:
+                    if r["status"] == "success" and r["matches"]:
+                        top_match = r["matches"][0]["name"]
+                        type_counts[top_match] = type_counts.get(top_match, 0) + 1
+                
+                sorted_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)
+                for hash_type, count in sorted_types[:10]:
+                    print(f"  • {hash_type}: {count} adet")
+                print()
         return
 
     # Tek hash analizi
