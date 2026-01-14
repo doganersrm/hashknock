@@ -92,3 +92,35 @@ sudo git reset --hard
 sudo git pull
 ```
 
+---
+
+## Yeni İyileştirmeler (v2.0)
+
+### 1) Gelişmiş Olasılık Hesaplama
+HASH KNOCK artık hash türlerini sadece regex eşleşmesine göre değil, **bağlamsal ağırlıklandırma** ile sıralar.
+
+- **Veritabanı spesifik hash'ler** (MySQL, PostgreSQL, MSSQL, Oracle): **%5 ağırlık**
+- **Framework spesifik hash'ler** (Django, WordPress, Joomla): **%4 ağırlık**
+- **Standart hash'ler** (MD5, SHA, NTLM): **%3 ağırlık**
+- **Generic / Base64** türleri: **%1 ağırlık**
+
+ Amaç: Daha **spesifik ve anlamlı** hash formatlarını otomatik olarak üst sıralara taşımak.
+
+---
+
+### 2) Birden Fazla Hashcat Komutu Üretimi
+En olası **ilk 3 hash türü** için otomatik olarak ayrı **Hashcat cracking komutları** oluşturulur.
+
+- Her komutta:
+  - Hash türü
+  - Olasılık yüzdesi
+  - İlgili Hashcat mode numarası
+- Kullanıcı doğrudan kopyala-çalıştır yapabilir
+
+Örnek:
+```bash
+hashcat -m 1000 -a 0 hash.txt wordlist.txt  # NTLM (%33.33)
+hashcat -m 0    -a 0 hash.txt wordlist.txt  # MD5  (%22.22)
+
+
+
