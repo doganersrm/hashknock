@@ -106,8 +106,6 @@ HASH KNOCK artık hash türlerini sadece regex eşleşmesine göre değil, **ba�
 
  Amaç: Daha **spesifik ve anlamlı** hash formatlarını otomatik olarak üst sıralara taşımak.
 
----
-
 ### 2) Birden Fazla Hashcat Komutu Üretimi
 En olası **ilk 3 hash türü** için otomatik olarak ayrı **Hashcat cracking komutları** oluşturulur.
 
@@ -116,11 +114,43 @@ En olası **ilk 3 hash türü** için otomatik olarak ayrı **Hashcat cracking k
   - Olasılık yüzdesi
   - İlgili Hashcat mode numarası
 - Kullanıcı doğrudan kopyala-çalıştır yapabilir
-
-Örnek:
+- 
 ```bash
 hashcat -m 1000 -a 0 hash.txt wordlist.txt  # NTLM (%33.33)
 hashcat -m 0    -a 0 hash.txt wordlist.txt  # MD5  (%22.22)
+```
 
+### 3) Hash Uzunluğu Gösterimi
 
+```bash
+[+] Uzunluk:
+    32 karakter
+```
 
+### 4) Toplu Analizde İstatistik
+
+ - Dosya analizi sonrası en çok bulunan hash türlerini gösterir
+ - Başarılı/başarısız analiz sayısı
+
+### 5) Gelişmiş Filtreleme
+
+ - Generic ve Base64 türleri otomatik filtrelenir
+ - Daha spesifik eşleşmeler önceliklendirilir
+
+### 6) Hata Yönetimi
+
+ - Regex hatalarını yakalar ve atlar
+ - Dosya yolunu gösterir
+```bash
+# Tek hash test
+python hashknock.py -h "5f4dcc3b5aa765d61d8327deb882cf99"
+
+# MySQL hash test (yıldız ile başlayan)
+python hashknock.py -h "*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19"
+
+# Salt'lı hash test
+python hashknock.py -h "5f4dcc3b5aa765d61d8327deb882cf99:mysalt123"
+
+# Verbose mod
+python hashknock.py -h "hash_değeri" -v
+```
