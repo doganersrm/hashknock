@@ -5,8 +5,30 @@ import re
 import os
 import subprocess
 import sys
+import csv
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple, Optional
+
+# Renkli çıktı için basit ANSI kodları
+class Colors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+# Renklendirme aktif mi (--no-color ile kapatılabilir)
+USE_COLOR = True
+
+def colored(text: str, color: str) -> str:
+    """Metni renklendirir (eğer USE_COLOR True ise)"""
+    if USE_COLOR:
+        return f"{color}{text}{Colors.ENDC}"
+    return text
 
 
 def print_banner():
@@ -18,9 +40,9 @@ def print_banner():
 ██║  ██║██║  ██║███████║██║  ██╗     ██║  ██╗██║ ╚███║╚██████╔╝╚██████╗██║  ██╗
 ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚══╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝
 
-                     HASH KNOCK  —  Hash Type Identifier v0.6
+                     HASH KNOCK  —  Hash Type Identifier v2.0
     """
-    print(banner)
+    print(colored(banner, Colors.HEADER))
 
 
 def is_hex(s: str) -> bool:
@@ -36,7 +58,7 @@ def print_table(rows, headers):
     fmt = " | ".join(f"{{:<{w}}}" for w in col_widths)
     separator = "-+-".join("-" * w for w in col_widths)
 
-    print(fmt.format(*headers))
+    print(colored(fmt.format(*headers), Colors.BOLD))
     print(separator)
 
     for row in rows:
@@ -79,6 +101,29 @@ def load_hashcat_map(path: Path) -> Dict[str, List[int]]:
         else:
             mapping[key] = [int(value)]
     return mapping
+
+
+def detect_salt(hash_value: str) -> Tuple[str, Optional[str]]:
+    """
+    Hash içinde salt varsa ayırır.
+    Formatlar: hash:salt, $algo$salt$hash vb.
+    
+    Returns:
+        (hash_part, salt_part or None)
+    """
+    # Format 1: hash:salt (basit)
+    if ":" in hash_value and not hash_value.startswith("$"):
+        parts = hash_value.split(":", 1)
+        return parts[0], parts[1]
+    
+    # Format 2: $algo$salt$hash (örn: bcrypt, sha512crypt)
+    if hash_value.startswith("$"):
+        parts = hash_value.split("$")
+        if len(parts) >= 4:
+            # Genelde $algo$rounds/salt$hash formatı
+            return hash_value, parts[2] if len(parts[2]) > 0 else None
+    
+    return hash_value, None
 
 
 def identify_hash(hash_value: str, signatures: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -125,99 +170,303 @@ def compute_probabilities(matches: List[Dict[str, Any]]) -> Dict[str, float]:
     return probs
 
 
-def analyze_and_print(hash_value: str,
-                      signatures: List[Dict[str, Any]],
-                      hashcat_map: Dict[str, List[int]]) -> None:
-    """Tek bir hash için analizi yapıp ekrana basar."""
+def generate_hashcat_command(hash_value: str, 
+                            matches: List[Dict[str, Any]], 
+                            hashcat_map: Dict[str, List[int]],
+                            verbose: bool = False) -> Optional[str]:
+    """
+    En olası hash türüne göre hashcat komutu oluşturur.
+    """
+    if not matches:
+        return None
+    
+    # En yüksek olasılıklı hash türünü al
+    probs = compute_probabilities(matches)
+    best_match = max(matches, key=lambda m: probs.get(m.get("name", ""), 0))
+    
+    name = best_match.get("name", "")
+    hashcat_key = best_match.get("hashcat_key") or name
+    modes = hashcat_map.get(hashcat_key)
+    
+    if not modes:
+        if verbose:
+            print(colored(f"[!] '{name}' için hashcat mode bulunamadı.", Colors.WARNING))
+        return None
+    
+    mode = modes[0]  # İlk mode'u kullan
+    
+    # Temel komut
+    cmd = f"hashcat -m {mode} -a 0 hash.txt wordlist.txt"
+    
+    if verbose:
+        print(colored(f"[*] Hashcat komutu oluşturuldu (mode: {mode}, tip: {name})", Colors.OKCYAN))
+    
+    return cmd
+
+
+def analyze_hash(hash_value: str,
+                signatures: List[Dict[str, Any]],
+                hashcat_map: Dict[str, List[int]],
+                verbose: bool = False) -> Dict[str, Any]:
+    """
+    Tek bir hash için analiz yapar ve sonuçları dict olarak döner.
+    """
     raw = hash_value.strip()
     if (raw.startswith("'") and raw.endswith("'")) or (raw.startswith('"') and raw.endswith('"')):
         h = raw[1:-1]
     else:
         h = raw
 
-    print(f"[+] Girdiğin hash:\n    {h}\n")
+    # Salt tespiti
+    hash_part, salt_part = detect_salt(h)
+    
+    if verbose and salt_part:
+        print(colored(f"[*] Salt tespit edildi: {salt_part}", Colors.OKCYAN))
 
     matches = identify_hash(h, signatures)
+    
+    result = {
+        "original_hash": h,
+        "hash_part": hash_part,
+        "salt": salt_part,
+        "matches": [],
+        "hashcat_command": None
+    }
 
     if not matches:
-        print("[-] Bu hash için tanımlı bir imza bulunamadı.")
-        print("[*] Yeni bir hash tipi gördüysen, signatures.json'a yeni regex imzası ekleyebilirsin.\n")
-        return
+        result["status"] = "no_match"
+        return result
 
+    result["status"] = "success"
     probs = compute_probabilities(matches)
 
-    print("\n[+] Eşleşen muhtemel hash türleri:\n")
-
-    rows = []
     for sig in matches:
         name = sig.get("name", "Bilinmeyen")
         desc = sig.get("description", "")
-        p = f"%{probs.get(name, 0.0)}"
+        prob = probs.get(name, 0.0)
 
         hashcat_key = sig.get("hashcat_key") or name
         modes = hashcat_map.get(hashcat_key)
         mode_str = ", ".join(str(m) for m in modes) if modes else "-"
 
-        rows.append([name, desc, p, mode_str])
+        result["matches"].append({
+            "name": name,
+            "description": desc,
+            "probability": prob,
+            "hashcat_modes": mode_str
+        })
+
+    # Hashcat komutu oluştur
+    hashcat_cmd = generate_hashcat_command(h, matches, hashcat_map, verbose)
+    if hashcat_cmd:
+        result["hashcat_command"] = hashcat_cmd
+
+    return result
+
+
+def analyze_and_print(hash_value: str,
+                      signatures: List[Dict[str, Any]],
+                      hashcat_map: Dict[str, List[int]],
+                      verbose: bool = False) -> Dict[str, Any]:
+    """Tek bir hash için analizi yapıp ekrana basar."""
+    
+    result = analyze_hash(hash_value, signatures, hashcat_map, verbose)
+    
+    print(colored(f"[+] Girdiğin hash:", Colors.OKGREEN))
+    print(f"    {result['original_hash']}\n")
+    
+    if result.get("salt"):
+        print(colored(f"[+] Salt tespit edildi:", Colors.OKBLUE))
+        print(f"    {result['salt']}\n")
+
+    if result["status"] == "no_match":
+        print(colored("[-] Bu hash için tanımlı bir imza bulunamadı.", Colors.FAIL))
+        print(colored("[*] Yeni bir hash tipi gördüysen, signatures.json'a yeni regex imzası ekleyebilirsin.\n", Colors.WARNING))
+        return result
+
+    print(colored("\n[+] Eşleşen muhtemel hash türleri:\n", Colors.OKGREEN))
+
+    rows = []
+    for match in result["matches"]:
+        prob_colored = colored(f"%{match['probability']}", Colors.OKGREEN if match['probability'] > 50 else Colors.WARNING)
+        rows.append([
+            match["name"],
+            match["description"],
+            prob_colored,
+            match["hashcat_modes"]
+        ])
 
     print_table(
         rows,
         headers=["Hash Türü", "Açıklama", "Olasılık", "Hashcat Mode"]
     )
 
-    print("[*] Not: Birden fazla eşleşme olması normaldir; bazı formatlar aynı pattern'i paylaşır.")
-    print("[*] Hashcat mod bilgisi sadece referans içindir; cracking işlemini ayrıca Hashcat ile yapman gerekir.\n")
+    if result.get("hashcat_command"):
+        print(colored("[+] Önerilen Hashcat Komutu:", Colors.OKGREEN))
+        print(colored(f"    {result['hashcat_command']}\n", Colors.OKCYAN))
+
+    print(colored("[*] Not: Birden fazla eşleşme olması normaldir; bazı formatlar aynı pattern'i paylaşır.", Colors.WARNING))
+    print(colored("[*] Hashcat komutunu kullanmadan önce hash.txt dosyasına hash'ini kaydet.\n", Colors.WARNING))
+    
+    return result
 
 
-#GÜNCELLEME FONKSİYONU
+def analyze_file(file_path: Path,
+                signatures: List[Dict[str, Any]],
+                hashcat_map: Dict[str, List[int]],
+                verbose: bool = False) -> List[Dict[str, Any]]:
+    """
+    Dosyadan hash'leri okur ve analiz eder.
+    """
+    if not file_path.is_file():
+        print(colored(f"[-] Dosya bulunamadı: {file_path}", Colors.FAIL))
+        return []
+    
+    results = []
+    
+    with file_path.open("r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
+    
+    total = len(lines)
+    print(colored(f"[+] Dosyadan {total} hash okundu. Analiz başlıyor...\n", Colors.OKGREEN))
+    
+    for idx, line in enumerate(lines, 1):
+        if verbose:
+            print(colored(f"[*] İşleniyor ({idx}/{total}): {line[:50]}...", Colors.OKCYAN))
+        
+        result = analyze_hash(line, signatures, hashcat_map, verbose)
+        results.append(result)
+    
+    print(colored(f"\n[+] Toplam {total} hash analiz edildi.\n", Colors.OKGREEN))
+    
+    return results
+
+
+def output_json(results: List[Dict[str, Any]], output_file: Optional[str] = None):
+    """Sonuçları JSON formatında çıktı verir."""
+    # _compiled regex objelerini kaldır
+    clean_results = []
+    for r in results:
+        clean_r = r.copy()
+        if "matches" in clean_r:
+            clean_r["matches"] = [
+                {k: v for k, v in m.items() if not k.startswith("_")}
+                for m in clean_r["matches"]
+            ]
+        clean_results.append(clean_r)
+    
+    json_output = json.dumps(clean_results, indent=2, ensure_ascii=False)
+    
+    if output_file:
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(json_output)
+        print(colored(f"[+] JSON çıktısı kaydedildi: {output_file}", Colors.OKGREEN))
+    else:
+        print(json_output)
+
+
+def output_csv(results: List[Dict[str, Any]], output_file: Optional[str] = None):
+    """Sonuçları CSV formatında çıktı verir."""
+    rows = []
+    
+    for r in results:
+        base = {
+            "hash": r["original_hash"],
+            "salt": r.get("salt", ""),
+            "status": r["status"]
+        }
+        
+        if r["status"] == "success" and r["matches"]:
+            for match in r["matches"]:
+                row = base.copy()
+                row.update({
+                    "hash_type": match["name"],
+                    "description": match["description"],
+                    "probability": match["probability"],
+                    "hashcat_modes": match["hashcat_modes"]
+                })
+                rows.append(row)
+        else:
+            base.update({
+                "hash_type": "No Match",
+                "description": "",
+                "probability": 0,
+                "hashcat_modes": ""
+            })
+            rows.append(base)
+    
+    if not rows:
+        return
+    
+    fieldnames = ["hash", "salt", "status", "hash_type", "description", "probability", "hashcat_modes"]
+    
+    if output_file:
+        with open(output_file, "w", encoding="utf-8", newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(colored(f"[+] CSV çıktısı kaydedildi: {output_file}", Colors.OKGREEN))
+    else:
+        writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def update_hashknock():
     """
     /opt/hashknock altında git pull ile güncelleme yapar.
     'hashknock --update' ile çağrılır.
     """
-    print("[*] HASH KNOCK: Güncelleme başlatılıyor...\n")
+    print(colored("[*] HASH KNOCK: Güncelleme başlatılıyor...\n", Colors.OKCYAN))
 
     repo_url = "https://github.com/doganersrm/hashknock.git"
     install_dir = "/opt/hashknock"
 
     if not os.path.exists(install_dir):
-        print(f"[-] {install_dir} dizini bulunamadı.")
+        print(colored(f"[-] {install_dir} dizini bulunamadı.", Colors.FAIL))
         print("[*] Bu komut, aracı /opt/hashknock altına git clone ile kurduğunu varsayar.")
-        print("[*] İlk kurulum için örnek:")
+        print(f"[*] İlk kurulum için örnek:")
         print(f"    sudo git clone {repo_url} {install_dir}\n")
         sys.exit(1)
 
-    # git var mı kontrolü (opsiyonel ama faydalı)
+    # git var mı kontrolü
     try:
         subprocess.run(["git", "--version"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
-        print("[-] 'git' komutu bulunamadı. Lütfen önce git kur:")
+        print(colored("[-] 'git' komutu bulunamadı. Lütfen önce git kur:", Colors.FAIL))
         print("    sudo apt install git\n")
         sys.exit(1)
 
     try:
-        print(f"[*] {install_dir} dizininde 'git pull' çalıştırılıyor...\n")
+        print(colored(f"[*] {install_dir} dizininde 'git pull' çalıştırılıyor...\n", Colors.OKCYAN))
         subprocess.run(["sudo", "git", "-C", install_dir, "pull"], check=True)
-        print("\n[+] HASH KNOCK başarıyla güncellendi!")
-        print("[*] Değişikliklerin etkili olması için komutu yeniden çalıştırabilirsin.\n")
+        print(colored("\n[+] HASH KNOCK başarıyla güncellendi!", Colors.OKGREEN))
+        print(colored("[*] Değişikliklerin etkili olması için komutu yeniden çalıştırabilirsin.\n", Colors.OKCYAN))
         sys.exit(0)
     except subprocess.CalledProcessError:
-        print("[-] 'git pull' sırasında bir hata oluştu. Lütfen dizinin bir git repo olduğundan emin ol.")
+        print(colored("[-] 'git pull' sırasında bir hata oluştu. Lütfen dizinin bir git repo olduğundan emin ol.", Colors.FAIL))
         sys.exit(1)
 
 
 def main():
+    global USE_COLOR
+    
     parser = argparse.ArgumentParser(
         prog="hashknock",
-        description="Hash Tanıma Aracı (JSON imzalı, % olasılık + Hashcat mode gösterir).",
+        description="Hash Tanıma Aracı v2.0 (Toplu analiz, JSON/CSV çıktı, Hashcat komut oluşturma, Salt tespiti)",
         add_help=False
     )
 
-    # -h ile hash giriliyor
+    # Temel parametreler
     parser.add_argument(
         "-h", "--hash",
         dest="hash_value",
-        help="Türü tahmin edilecek hash değeri (tırnaklı/çıplak yazabilirsin)."
+        help="Türü tahmin edilecek hash değeri"
+    )
+    parser.add_argument(
+        "-f", "--file",
+        dest="hash_file",
+        help="Hash'lerin bulunduğu dosya (her satırda bir hash)"
     )
     parser.add_argument(
         "-s", "--signatures",
@@ -229,27 +478,53 @@ def main():
         default="hashcat_modes.json",
         help="Hashcat mode eşlemesi dosyası (varsayılan: hashcat_modes.json)"
     )
-    # yeni parametre: --update
+    
+    # Çıktı formatı
+    parser.add_argument(
+        "-o", "--output",
+        choices=["json", "csv"],
+        help="Çıktı formatı (json veya csv)"
+    )
+    parser.add_argument(
+        "--output-file",
+        help="Çıktının kaydedileceği dosya (belirtilmezse stdout'a yazar)"
+    )
+    
+    # Diğer özellikler
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Detaylı çıktı (debug modu)"
+    )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Renkli çıktıyı devre dışı bırak"
+    )
     parser.add_argument(
         "--update",
         action="store_true",
-        help="HASH KNOCK aracını /opt/hashknock altında git pull ile günceller."
+        help="HASH KNOCK aracını /opt/hashknock altında git pull ile günceller"
     )
     parser.add_argument(
         "-H", "--help",
         action="help",
-        help="Bu yardım mesajını göster ve çık."
+        help="Bu yardım mesajını göster ve çık"
     )
     parser.add_argument(
         "-V", "--version",
         action="version",
-        version="hashknock 1.0",
-        help="Sürüm bilgisini göster."
+        version="hashknock 2.0",
+        help="Sürüm bilgisini göster"
     )
 
     args = parser.parse_args()
 
-    # Önce update isteği varsa onu çalıştır
+    # Renk ayarı
+    if args.no_color:
+        USE_COLOR = False
+
+    # Update isteği
     if args.update:
         update_hashknock()
 
@@ -260,41 +535,62 @@ def main():
 
     try:
         signatures = load_signatures(sig_path)
+        if args.verbose:
+            print(colored(f"[*] {len(signatures)} imza yüklendi.", Colors.OKCYAN))
     except Exception as e:
-        print(f"[-] İmza dosyası yüklenemedi: {e}")
+        print(colored(f"[-] İmza dosyası yüklenemedi: {e}", Colors.FAIL))
         return
 
     hashcat_map = load_hashcat_map(modes_path)
+    if args.verbose and hashcat_map:
+        print(colored(f"[*] {len(hashcat_map)} hashcat mode eşlemesi yüklendi.", Colors.OKCYAN))
 
-    # Eğer -h/--hash ile hash verildiyse tek seferlik çalış
-    if args.hash_value:
-        analyze_and_print(args.hash_value, signatures, hashcat_map)
+    # Dosyadan toplu analiz
+    if args.hash_file:
+        results = analyze_file(Path(args.hash_file), signatures, hashcat_map, args.verbose)
+        
+        if args.output == "json":
+            output_json(results, args.output_file)
+        elif args.output == "csv":
+            output_csv(results, args.output_file)
+        else:
+            # Normal çıktı (her hash için detaylı)
+            for idx, result in enumerate(results, 1):
+                print(colored(f"\n{'='*60}", Colors.BOLD))
+                print(colored(f"Hash #{idx}", Colors.BOLD))
+                print(colored(f"{'='*60}\n", Colors.BOLD))
+                analyze_and_print(result["original_hash"], signatures, hashcat_map, args.verbose)
         return
 
-    # Hiç argüman yoksa: etkileşimli mod
-    print("[*] Komut satırında hash vermedin. Etkileşimli moda geçiliyor.")
-    print("[*] Çıkmak için 'exit', 'quit' veya Ctrl+C kullanabilirsin.\n")
+    # Tek hash analizi
+    if args.hash_value:
+        result = analyze_and_print(args.hash_value, signatures, hashcat_map, args.verbose)
+        
+        if args.output == "json":
+            output_json([result], args.output_file)
+        elif args.output == "csv":
+            output_csv([result], args.output_file)
+        return
+
+    # Etkileşimli mod
+    print(colored("[*] Komut satırında hash vermedin. Etkileşimli moda geçiliyor.", Colors.OKCYAN))
+    print(colored("[*] Çıkmak için 'exit', 'quit' veya Ctrl+C kullanabilirsin.\n", Colors.WARNING))
 
     while True:
         try:
-            line = input("hashknock> ").strip()
+            line = input(colored("hashknock> ", Colors.OKBLUE)).strip()
         except (EOFError, KeyboardInterrupt):
-            print("\n[+] Çıkılıyor.")
+            print(colored("\n[+] Çıkılıyor.", Colors.OKGREEN))
             break
 
         if not line:
             continue
         if line.lower() in ("exit", "quit", "q"):
-            print("[+] Çıkılıyor.")
+            print(colored("[+] Çıkılıyor.", Colors.OKGREEN))
             break
 
-        analyze_and_print(line, signatures, hashcat_map)
+        analyze_and_print(line, signatures, hashcat_map, args.verbose)
 
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
